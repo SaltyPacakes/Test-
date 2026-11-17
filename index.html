@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Morning Log">
+<meta name="theme-color" content="#14201c">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<title>Morning Log</title>
+<style>
+/* Layout: one narrow column, big tap targets, summary below the daily log. Palette: pre-dawn teal-ink with a low-sun amber accent. */
+:root{
+  --bg:#f3f1ec; --surface:#ffffff; --fg:#1b2623; --muted:#5f6d68; --line:#dcd8cf;
+  --accent:#c2620a; --accent-fg:#ffffff; --ok:#2f7a55; --warn:#b3261e; --track:#e6e2d9;
+  --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root{--bg:#101a17; --surface:#182420; --fg:#e8efec; --muted:#93a39d; --line:#2a3a35;
+    --accent:#f0a04b; --accent-fg:#1a1208; --ok:#58c08c; --warn:#ff8a80; --track:#25352f; color-scheme:dark}
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--fg);font:16px/1.4 var(--font);
+  padding-block:16px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  -webkit-text-size-adjust:100%}
+main{max-width:520px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+h1{font-size:22px;margin:0;letter-spacing:-.01em}
+h2{font-size:12px;margin:0 0 4px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);font-weight:600}
+.top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.sub{color:var(--muted);font-size:13px}
+.datebar{display:flex;align-items:center;gap:8px}
+.datebar button{flex:0 0 44px}
+.datebar .d{flex:1;text-align:center;font-weight:600}
+.datebar .d small{display:block;font-weight:400;color:var(--muted);font-size:12px}
+button,input,select,textarea{font:inherit;color:inherit}
+button{background:var(--surface);border:1px solid var(--line);border-radius:10px;min-height:44px;padding:0 14px;cursor:pointer}
+button:active{transform:translateY(1px)}
+button.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent);font-weight:600}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+.prog{display:flex;align-items:center;gap:12px}
+.bar{flex:1;height:10px;background:var(--track);border-radius:99px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent);width:0;transition:width .25s}
+.pct{font-family:var(--mono);font-variant-numeric:tabular-nums;font-weight:600;min-width:3.2em;text-align:right}
+.row{display:flex;align-items:center;gap:10px;min-height:52px;border-top:1px solid var(--line);padding:6px 0}
+.row:first-of-type{border-top:0}
+.row .lbl{flex:1;min-width:0}
+.row .lbl b{display:block;font-weight:600}
+.row .lbl span{display:block;color:var(--muted);font-size:13px}
+.chk{appearance:none;-webkit-appearance:none;width:30px;height:30px;border-radius:8px;border:2px solid var(--muted);background:transparent;flex:0 0 30px;cursor:pointer;position:relative}
+.chk:checked{background:var(--ok);border-color:var(--ok)}
+.chk:checked::after{content:"";position:absolute;left:8px;top:3px;width:7px;height:14px;border:solid #fff;border-width:0 3px 3px 0;transform:rotate(45deg)}
+input[type=time],input[type=number],select,textarea,input[type=date]{background:var(--bg);border:1px solid var(--line);border-radius:10px;min-height:44px;padding:0 10px}
+input[type=time]{width:8.5em}
+input[type=number]{width:5.2em;font-variant-numeric:tabular-nums}
+select{max-width:9em}
+textarea{width:100%;min-height:72px;padding:10px;resize:vertical}
+.pair{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.unit{color:var(--muted);font-size:13px}
+.stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.stat{background:var(--bg);border-radius:10px;padding:10px 12px}
+.stat .v{font-family:var(--mono);font-size:22px;font-weight:600;font-variant-numeric:tabular-nums}
+.stat .k{color:var(--muted);font-size:12px}
+.chartwrap{overflow-x:auto}
+svg{display:block;width:100%;height:auto}
+.note{color:var(--muted);font-size:13px}
+.tools{display:flex;flex-wrap:wrap;gap:8px}
+.tools button{flex:1 1 40%}
+.hint{background:var(--bg);border-left:3px solid var(--accent);padding:8px 10px;border-radius:6px;font-size:13px;color:var(--muted)}
+.warnbox{border-left-color:var(--warn)}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <h1>Morning Log</h1>
+    <span class="sub" id="tz">Norman, OK · Nov</span>
+  </div>
+
+  <div class="datebar">
+    <button id="prev" aria-label="Previous day">‹</button>
+    <div class="d" id="dlabel"></div>
+    <button id="next" aria-label="Next day">›</button>
+  </div>
+
+  <div class="card prog">
+    <div class="bar" aria-hidden="true"><i id="barfill"></i></div>
+    <div class="pct" id="pct">0%</div>
+  </div>
+
+  <div class="hint warnbox" id="storewarn" hidden>This browser is blocking saved data, so entries will be lost when you close the page. Open the file in Safari or Chrome normally, not from a preview.</div>
+
+  <section class="card">
+    <h2>Morning</h2>
+    <div class="row">
+      <div class="lbl"><b>Wake time</b><span>Target <span id="tgtlbl">7:00 AM</span>. No snooze.</span></div>
+      <input type="time" id="wake" aria-label="Wake time">
+    </div>
+    <div class="row">
+      <div class="lbl"><b>16 oz water</b><span>Room temp or cool, right after waking</span></div>
+      <input type="checkbox" class="chk" id="water1" aria-label="First water done">
+    </div>
+    <div class="row">
+      <div class="lbl"><b>Outdoor light</b><span>No sunglasses, not through glass</span></div>
+      <div class="pair"><input type="number" id="light" min="0" max="240" inputmode="numeric" aria-label="Minutes of outdoor light"><span class="unit">min</span></div>
+    </div>
+    <div class="row">
+      <div class="lbl"><b>Run or walk</b><span>Easy days can be a walk</span></div>
+      <div class="pair">
+        <select id="move" aria-label="Movement type"><option value="">Not yet</option><option value="run">Run</option><option value="walk">Walk</option><option value="none">Skipped</option></select>
+        <input type="number" id="moveMin" min="0" max="300" inputmode="numeric" aria-label="Movement minutes"><span class="unit">min</span>
+      </div>
+    </div>
+    <div class="row">
+      <div class="lbl"><b>Cold rinse</b><span>Face, neck, forearms, or 30 to 60 s finish</span></div>
+      <input type="checkbox" class="chk" id="cold" aria-label="Cold rinse done">
+    </div>
+    <div class="row">
+      <div class="lbl"><b>Second 16 oz water</b><span>Add electrolytes after long or sweaty runs</span></div>
+      <input type="checkbox" class="chk" id="water2" aria-label="Second water done">
+    </div>
+    <div class="row">
+      <div class="lbl"><b>Breakfast with protein</b><span>Time you ate</span></div>
+      <input type="time" id="breakfast" aria-label="Breakfast time">
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Evening</h2>
+    <div class="row">
+      <div class="lbl"><b>Dim, warm light</b><span>From sunset (about 5:20 PM)</span></div>
+      <input type="checkbox" class="chk" id="dim" aria-label="Dimmed lights in the evening">
+    </div>
+    <div class="row">
+      <div class="lbl"><b>Warm shower</b><span>1 to 2 hours before bed</span></div>
+      <input type="checkbox" class="chk" id="shower" aria-label="Warm shower done">
+    </div>
+    <div class="row">
+      <div class="lbl"><b>Last caffeine</b><span>Aim for before 1 to 2 PM</span></div>
+      <input type="time" id="caff" aria-label="Last caffeine time">
+    </div>
+    <div class="row">
+      <div class="lbl"><b>Bedtime tonight</b><span>Step it earlier 15 to 20 min every few days</span></div>
+      <input type="time" id="bed" aria-label="Bedtime">
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Notes</h2>
+    <textarea id="notes" placeholder="Shift time, how the run felt, sleepiness…" aria-label="Notes"></textarea>
+  </section>
+
+  <section class="card">
+    <h2>Last 7 days</h2>
+    <div class="stats">
+      <div class="stat"><div class="v" id="s-range">–</div><div class="k">Wake-time spread</div></div>
+      <div class="stat"><div class="v" id="s-avg">–</div><div class="k">Average wake</div></div>
+      <div class="stat"><div class="v" id="s-light">–</div><div class="k">Avg outdoor light (min)</div></div>
+      <div class="stat"><div class="v" id="s-streak">0</div><div class="k">Day streak (75%+)</div></div>
+      <div class="stat"><div class="v" id="s-move">–</div><div class="k">Days run or walked</div></div>
+      <div class="stat"><div class="v" id="s-bed">–</div><div class="k">Avg bedtime</div></div>
+    </div>
+    <p class="note" id="insight" style="margin:10px 0 0"></p>
+  </section>
+
+  <section class="card">
+    <h2>Wake time, last 14 days</h2>
+    <div class="chartwrap"><svg id="chart" viewBox="0 0 360 200" role="img" aria-label="Wake times for the last 14 days against target"></svg></div>
+    <div class="row" style="border-top:0;padding-bottom:0">
+      <div class="lbl"><b>Target wake time</b></div>
+      <input type="time" id="target" aria-label="Target wake time">
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Your data</h2>
+    <p class="note" style="margin:0 0 10px">Everything is saved only in this browser on this device. Nothing is sent anywhere. Export a backup now and then, because clearing Safari or Chrome website data erases it.</p>
+    <div class="tools">
+      <button id="exp">Export backup</button>
+      <button id="csv">Export CSV</button>
+      <button id="imp">Import backup</button>
+      <button id="clr">Erase all</button>
+    </div>
+    <input type="file" id="file" accept="application/json,.json" hidden>
+    <p class="note" id="msg" style="margin:10px 0 0" role="status"></p>
+  </section>
+</main>
+
+<script>
+(function(){
+  var KEY="morninglog.v1";
+  var mem={entries:{},settings:{target:"07:00"}};
+  var canStore=true;
+  function load(){
+    try{var raw=localStorage.getItem(KEY);if(raw){var o=JSON.parse(raw);return{entries:o.entries||{},settings:Object.assign({target:"07:00"},o.settings||{})};}}
+    catch(e){canStore=false;}
+    return mem;
+  }
+  function save(){
+    mem=db;
+    try{localStorage.setItem(KEY,JSON.stringify(db));}catch(e){canStore=false;document.getElementById("storewarn").hidden=false;}
+  }
+  var db=load();
+  if(!canStore)document.getElementById("storewarn").hidden=false;
+
+  var $=function(id){return document.getElementById(id)};
+  var today=new Date();
+  function iso(d){var m=d.getMonth()+1,dd=d.getDate();return d.getFullYear()+"-"+(m<10?"0":"")+m+"-"+(dd<10?"0":"")+dd}
+  function parse(s){var p=s.split("-");return new Date(+p[0],+p[1]-1,+p[2])}
+  function addDays(s,n){var d=parse(s);d.setDate(d.getDate()+n);return iso(d)}
+  var cur=iso(today), todayIso=cur;
+
+  function mins(t){if(!t)return null;var p=t.split(":");return +p[0]*60+ +p[1]}
+  function fmt(m,ampm){
+    if(m==null||isNaN(m))return"–";
+    m=((Math.round(m)%1440)+1440)%1440;
+    var h=Math.floor(m/60),mm=m%60,s=(mm<10?"0":"")+mm;
+    if(!ampm)return h+":"+s;
+    var ap=h>=12?"PM":"AM",h12=h%12===0?12:h%12;
+    return h12+":"+s+" "+ap;
+  }
+  // bedtimes after midnight count as late evening for averaging
+  function bedAdj(m){return m<12*60?m+1440:m}
+
+  var checks=["water1","cold","water2","dim","shower"];
+  var fields=["wake","light","move","moveMin","breakfast","caff","bed","notes"];
+
+  function get(d){return db.entries[d]||{}}
+  function score(e){
+    var n=0;
+    if(e.water1)n++;
+    if(+e.light>0)n++;
+    if(e.move==="run"||e.move==="walk")n++;
+    if(e.cold)n++;
+    if(e.water2)n++;
+    if(e.breakfast)n++;
+    if(e.dim)n++;
+    if(e.shower)n++;
+    return n/8;
+  }
+
+  function render(){
+    var e=get(cur);
+    var d=parse(cur);
+    $("dlabel").innerHTML=d.toLocaleDateString(undefined,{weekday:"long",month:"short",day:"numeric"})+
+      "<small>"+(cur===todayIso?"Today":cur>todayIso?"Future":Math.round((parse(todayIso)-d)/864e5)+" days ago")+"</small>";
+    $("next").disabled=cur>=todayIso;
+    $("next").style.opacity=cur>=todayIso?".4":"1";
+    checks.forEach(function(k){$(k).checked=!!e[k]});
+    fields.forEach(function(k){$(k).value=e[k]==null?"":e[k]});
+    $("target").value=db.settings.target;
+    $("tgtlbl").textContent=fmt(mins(db.settings.target),true);
+    renderDerived();
+  }
+
+  function renderDerived(){
+    var e=get(cur),p=Math.round(score(e)*100);
+    $("pct").textContent=p+"%";$("barfill").style.width=p+"%";
+    stats();chart();
+  }
+
+  function lastN(n){var out=[];for(var i=n-1;i>=0;i--)out.push(addDays(todayIso,-i));return out}
+
+  function stats(){
+    var days=lastN(7),wakes=[],lights=[],beds=[],moveDays=0;
+    days.forEach(function(k){
+      var e=get(k);
+      var w=mins(e.wake);if(w!=null)wakes.push(w);
+      if(e.light!==""&&e.light!=null&&!isNaN(+e.light))lights.push(+e.light);
+      var b=mins(e.bed);if(b!=null)beds.push(bedAdj(b));
+      if(e.move==="run"||e.move==="walk")moveDays++;
+    });
+    var tgt=mins(db.settings.target);
+    if(wakes.length>=2){
+      var r=Math.max.apply(null,wakes)-Math.min.apply(null,wakes);
+      $("s-range").textContent=r+" min";
+    }else $("s-range").textContent="–";
+    if(wakes.length){
+      var avg=wakes.reduce(function(a,b){return a+b},0)/wakes.length;
+      $("s-avg").textContent=fmt(avg,true);
+    }else $("s-avg").textContent="–";
+    $("s-light").textContent=lights.length?Math.round(lights.reduce(function(a,b){return a+b},0)/lights.length):"–";
+    $("s-move").textContent=moveDays+" / 7";
+    $("s-bed").textContent=beds.length?fmt(beds.reduce(function(a,b){return a+b},0)/beds.length,true):"–";
+    // streak: consecutive days ending today (skip today if not yet 75%)
+    var streak=0,k=todayIso;
+    if(score(get(k))<0.75)k=addDays(k,-1);
+    while(score(get(k))>=0.75){streak++;k=addDays(k,-1);if(streak>3650)break}
+    $("s-streak").textContent=streak;
+    // insight
+    var msg="Log a few days of wake times to see how steady they are.";
+    if(wakes.length>=3){
+      var r2=Math.max.apply(null,wakes)-Math.min.apply(null,wakes);
+      if(r2<=30)msg="Wake times are within 30 minutes. That steadiness does most of the work.";
+      else if(r2<=60)msg="Wake times vary by about an hour. Tightening to 30 minutes is the biggest lever.";
+      else msg="Wake times swing by more than an hour. Hold the target wake time first, even after a late night.";
+      if(tgt!=null){
+        var late=wakes.filter(function(w){return w-tgt>30}).length;
+        if(late>0)msg+=" "+late+" of the last "+wakes.length+" were more than 30 minutes past target.";
+      }
+    }
+    $("insight").textContent=msg;
+  }
+
+  function chart(){
+    var svg=$("chart"),days=lastN(14),W=360,H=200,L=44,R=10,T=14,B=30;
+    var pts=days.map(function(k){var m=mins(get(k).wake);return m==null?null:m});
+    var tgt=mins(db.settings.target);
+    var vals=pts.filter(function(v){return v!=null}).concat([tgt]);
+    var lo=Math.floor((Math.min.apply(null,vals)-30)/60)*60;
+    var hi=Math.ceil((Math.max.apply(null,vals)+30)/60)*60;
+    if(hi-lo<180){hi=lo+180}
+    function X(i){return L+(W-L-R)*i/(days.length-1)}
+    function Y(m){return T+(H-T-B)*(m-lo)/(hi-lo)}
+    var s="";
+    for(var m=lo;m<=hi;m+=60){
+      s+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+Y(m)+'" y2="'+Y(m)+'" stroke="var(--line)" stroke-width="1"/>';
+      s+='<text x="'+(L-6)+'" y="'+(Y(m)+4)+'" text-anchor="end" font-size="10" fill="var(--muted)" font-family="var(--mono)">'+fmt(m,true).replace(":00 "," ")+'</text>';
+    }
+    s+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+Y(tgt)+'" y2="'+Y(tgt)+'" stroke="var(--ok)" stroke-width="1.5" stroke-dasharray="5 4"/>';
+    var path="",started=false;
+    pts.forEach(function(v,i){
+      if(v==null){started=false;return}
+      path+=(started?"L":"M")+X(i).toFixed(1)+" "+Y(v).toFixed(1)+" ";started=true;
+    });
+    if(path)s+='<path d="'+path+'" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round"/>';
+    pts.forEach(function(v,i){
+      if(v==null)return;
+      s+='<circle cx="'+X(i).toFixed(1)+'" cy="'+Y(v).toFixed(1)+'" r="'+(i===pts.length-1?5:3.5)+'" fill="var(--accent)" stroke="var(--surface)" stroke-width="1.5"/>';
+    });
+    days.forEach(function(k,i){
+      if(i%3!==0&&i!==days.length-1)return;
+      var d=parse(k);
+      s+='<text x="'+X(i)+'" y="'+(H-10)+'" text-anchor="middle" font-size="10" fill="var(--muted)" font-family="var(--mono)">'+(d.getMonth()+1)+"/"+d.getDate()+'</text>';
+    });
+    if(!pts.some(function(v){return v!=null}))
+      s+='<text x="'+(W/2)+'" y="'+(H/2)+'" text-anchor="middle" font-size="12" fill="var(--muted)">Log a wake time to see the chart</text>';
+    svg.innerHTML=s;
+  }
+
+  function put(k,v){
+    var e=db.entries[cur]||(db.entries[cur]={});
+    e[k]=v;
+    var empty=Object.keys(e).every(function(x){return e[x]===""||e[x]===false||e[x]==null});
+    if(empty)delete db.entries[cur];
+    save();renderDerived();
+  }
+  checks.forEach(function(k){$(k).addEventListener("change",function(){put(k,$(k).checked)})});
+  fields.forEach(function(k){
+    var ev=(k==="notes"||k==="light"||k==="moveMin")?"input":"change";
+    $(k).addEventListener(ev,function(){put(k,$(k).value)});
+  });
+  $("target").addEventListener("change",function(){
+    if(!$("target").value)return;
+    db.settings.target=$("target").value;save();
+    $("tgtlbl").textContent=fmt(mins(db.settings.target),true);renderDerived();
+  });
+  $("prev").addEventListener("click",function(){cur=addDays(cur,-1);render()});
+  $("next").addEventListener("click",function(){if(cur<todayIso){cur=addDays(cur,1);render()}});
+
+  function msg(t){$("msg").textContent=t}
+  function download(name,type,text){
+    var b=new Blob([text],{type:type}),a=document.createElement("a");
+    a.href=URL.createObjectURL(b);a.download=name;document.body.appendChild(a);a.click();
+    setTimeout(function(){URL.revokeObjectURL(a.href);a.remove()},500);
+  }
+  $("exp").addEventListener("click",function(){
+    download("morning-log-"+todayIso+".json","application/json",JSON.stringify(db,null,2));
+    msg("Backup saved to your downloads.");
+  });
+  $("csv").addEventListener("click",function(){
+    var cols=["date","wake","water1","light","move","moveMin","cold","water2","breakfast","dim","shower","caff","bed","notes"];
+    var rows=[cols.join(",")];
+    Object.keys(db.entries).sort().forEach(function(d){
+      var e=db.entries[d];
+      rows.push(cols.map(function(c){
+        var v=c==="date"?d:e[c];
+        if(v==null)v="";
+        if(v===true)v="yes";if(v===false)v="";
+        v=String(v);
+        return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;
+      }).join(","));
+    });
+    download("morning-log.csv","text/csv",rows.join("\n"));
+    msg("CSV saved to your downloads.");
+  });
+  $("imp").addEventListener("click",function(){$("file").click()});
+  $("file").addEventListener("change",function(){
+    var f=$("file").files[0];if(!f)return;
+    var r=new FileReader();
+    r.onload=function(){
+      try{
+        var o=JSON.parse(r.result);
+        if(!o||typeof o.entries!=="object")throw new Error("bad");
+        db={entries:o.entries,settings:Object.assign({target:"07:00"},o.settings||{})};
+        save();render();msg("Backup imported.");
+      }catch(err){msg("That file isn't a Morning Log backup.");}
+      $("file").value="";
+    };
+    r.readAsText(f);
+  });
+  var armed=false;
+  $("clr").addEventListener("click",function(){
+    if(!armed){armed=true;$("clr").textContent="Tap again to erase";msg("This deletes every entry on this device.");
+      setTimeout(function(){armed=false;$("clr").textContent="Erase all"},4000);return}
+    db={entries:{},settings:{target:"07:00"}};save();render();
+    armed=false;$("clr").textContent="Erase all";msg("All entries erased.");
+  });
+
+  if("serviceWorker" in navigator && /^https?:$/.test(location.protocol)){
+    window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){})});
+  }
+  render();
+})();
+</script>
+</body>
+</html>
